@@ -31,6 +31,7 @@ blankettestlib.preload_local_blanket()
 for test_module in """
     test_injector
     test_primitives
+    test_cpython_lock_tests
 """.strip().split():
     module = __import__(test_module)
     module.run_tests()
