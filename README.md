@@ -2190,6 +2190,19 @@ exceed the initial value.
   the constructor raises.
 - `reset()`, `abort()`: pass through.
 
+## CPython lock tests
+
+The test suite includes CPython's `test.lock_tests` coverage for blanket's
+unregulated `Lock`, `RLock`, `Condition`, `Semaphore`, `BoundedSemaphore`,
+`Event`, and `Barrier` wrappers. Run it directly with:
+
+```
+python -m unittest discover -s tests -p 'test_cpython_lock_tests.py' -v
+```
+
+Some Python installations omit CPython's internal `test` package; in that
+case these tests are skipped.
+
 ## Changelog
 
 **0.1** *2026/05/14*
