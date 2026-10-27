@@ -4219,16 +4219,13 @@ class Scenario:
                         f"calling {self.method} in {self.state.name} state")
 
                 def __call__(self):
-                    # Publish: register this tx as the active tx on the
-                    # thread.  Invisible (raw) transactions don't
-                    # appear in score.transactions and fire no minders;
-                    # we still register the thread and  (which
-                    # is a no-op for invisible txs).
                     score = self.score
                     core = self.core
                     thread = self.thread
 
-                    score.register_thread(thread)
+                    # Inactive scenarios must not track unregulated calls.
+                    if score.entered:
+                        score.register_thread(thread)
 
                     if self.regulated:
                         parent = self.parent
@@ -4446,6 +4443,8 @@ class Scenario:
 
                 def __init__(self, core, method, start_time, regulated, timeout):
                     super().__init__(method, start_time, regulated)
+                    if timeout is not None and math.isnan(timeout):
+                        raise ValueError("Invalid value NaN (not a number)")
                     self.kwargs['timeout'] = timeout
                     # original_timeout is the literal user-supplied value
                     # (or the synthetic value the subclass derived from
@@ -4767,6 +4766,8 @@ class Scenario:
                 def __init__(self, core, method, start_time, regulated, blocking=True, timeout=-1):
                     if (not blocking) and (timeout != -1):
                         raise ValueError("can't specify a timeout for a non-blocking call")
+                    if timeout < -1:
+                        raise ValueError("timeout value must be positive")
                     super().__init__(method, start_time, regulated, timeout)
                     self.kwargs['blocking'] = blocking
 
@@ -5819,6 +5820,17 @@ class Scenario:
                 if lock is None:
                     lock = score.api.RLock()
                 else:
+                    if not isinstance(lock, (score.api.Lock, score.api.RLock)):
+                        lock_type = type(threading.Lock())
+                        rlock_type = type(threading.RLock())
+                        if isinstance(lock, lock_type):
+                            wrapped_lock = score.api.Lock()
+                            wrapped_lock._core.actual = lock
+                            lock = wrapped_lock
+                        elif isinstance(lock, rlock_type):
+                            wrapped_lock = score.api.RLock()
+                            wrapped_lock._core.actual = lock
+                            lock = wrapped_lock
                     if not isinstance(lock, (score.api.Lock, score.api.RLock)):
                         raise TypeError("Condition only accepts a blanket Lock or RLock from this Scenario")
                     lock_core = getattr(lock, '_core', None)
@@ -7954,6 +7966,10 @@ class Scenario:
     class ConditionPrimitive(base.Primitive):
         """Base class for Condition with method implementations."""
 
+        @property
+        def _waiters(self):
+            return self._core.actual._waiters
+
         def acquire(self, blocking=True, timeout=-1):
             return self._core.underlying.primitive.acquire(blocking=blocking, timeout=timeout)
 
@@ -8290,6 +8306,13 @@ class Scenario:
             score = scenario._core
             core = score.EventCore(self)
             super().__init__(core)
+
+        @property
+        def _cond(self):
+            return self._core.actual._cond
+
+        def _at_fork_reinit(self):
+            self._core.actual._at_fork_reinit()
 
         def is_set(self):
             with self._lock:
